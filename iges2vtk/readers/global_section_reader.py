@@ -1,0 +1,106 @@
+from collections import namedtuple
+from typing import List
+from ..iges import Iges, PreprocessorData
+from .section_reader import SectionReader, IgesLine
+
+
+class GlobalSectionReader(SectionReader):
+    """
+    Reader for the 'Global' section.
+    Global section contains preprocessor data.
+    It also must be present in the file and end with the G000000# format.
+    Strings are expressed in 'Hollerith' format, meaning every string has the
+    number of characters it contains followed by an H directly preceding it.
+
+    Example
+    ------
+    >>> global_reader = GlobalSectionReader(Iges())
+    >>> line = IgesLine("1H,,1H;,10H5MICRONLIB,5HPADIN,9HEXAMPLE 1,4HHAND,16,38,06,38,13,", "G","1")
+    >>> global_reader.unit_ready()
+    False
+    >>> global_reader.read_line(line)
+    >>> global_reader.unit_buffer
+    [',', ';', '5MICRONLIB', 'PADIN', 'EXAMPLE 1', 'HAND', 16.0, 38.0, 6.0, 38.0, 13.0]
+    >>> global_reader.left_over
+    ''
+    >>> global_reader.unit_ready()
+    True
+    >>> global_reader.process_unit()
+    >>> global_reader.unit_buffer
+    []
+    >>> global_reader.iges.preprocessor_datas
+    [',', ';', '5MICRONLIB', 'PADIN', 'EXAMPLE 1', 'HAND', 16.0, 38.0, 6.0, 38.0, 13.0]
+
+    """
+
+    COMMA = ","
+    H = "H"
+
+    UNIT_ENDS = [COMMA, H]
+
+    def __init__(self, iges: Iges) -> None:
+        super().__init__(iges)
+        self.left_over: str = ""
+
+    def read_line(self, line: IgesLine):
+        # A unit ends in either ',' or 'H'
+
+        content = self.left_over + line.content
+
+        i = 0
+        while i < len(content):
+            try:
+                length = self.count_until_unit_end(content[i:])
+            except IndexError:
+                self.left_over = content[i:]
+                return
+
+            if content[i+length] == self.COMMA:
+                # It's a numberical data
+                i = self.parse_numerical(i, length, content)
+            else:
+                # It's a string data
+                i = self.parse_string(i, length, content)
+            i += 1
+
+    def count_until_unit_end(self, remaining_line: str) -> int:
+        """Counts number of strings until ',' or 'H' is met"""
+        length = 0
+        while remaining_line[length] not in self.UNIT_ENDS:
+            length += 1
+
+        return length
+
+    def parse_numerical(self, i: int, length: int, content: str) -> int:
+        """Parse a numerical data and return the index to look at"""
+        data = float(content[i:i+length])
+        self.unit_buffer.append(data)
+        i += length
+        return i
+
+    def parse_string(self, i: int, length: int, content: str) -> int:
+        """Parse a string data and return the index to look at"""
+        string_length = int(content[i: i+length])
+        # length: length of the 'String length'
+        # 1: length of 'H'
+        i += length + 1
+
+        data = str(content[i:i+string_length])
+        self.unit_buffer.append(data)
+        i += string_length
+        return i
+
+    def process_unit(self):
+        self.iges.preprocessor_datas += self.unit_buffer
+        self.reset_unit_buffer()
+
+    def unit_ready(self) -> bool:
+        return len(self.unit_buffer) > 0
+
+    def reset_unit_buffer(self):
+        self.unit_buffer: List[PreprocessorData] = []
+
+
+if __name__ == "__main__":
+    import doctest
+    doctest.testmod()
