@@ -38,8 +38,8 @@ class GlobalSectionReader(SectionReader):
 
     UNIT_ENDS = [COMMA, H]
 
-    def __init__(self, iges: Iges) -> None:
-        super().__init__(iges)
+    def __init__(self) -> None:
+        super().__init__()
         self.left_over: str = ""
 
     def read_line(self, line: IgesLine):
@@ -73,7 +73,8 @@ class GlobalSectionReader(SectionReader):
 
     def parse_numerical(self, i: int, length: int, content: str) -> int:
         """Parse a numerical data and return the index to look at"""
-        data = float(content[i:i+length])
+        string = content[i:i+length]
+        data = float(string) if string else float()
         self.unit_buffer.append(data)
         i += length
         return i

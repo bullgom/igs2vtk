@@ -1,4 +1,4 @@
-from typing import List, Union
+from typing import List, Optional, Union
 from .entity import Entity
 from dataclasses import dataclass
 
@@ -21,3 +21,17 @@ class Iges:
         self.entities : List[Entity] = []
         self.description : str = ""
         self.preprocessor_datas : List[PreprocessorData] = []
+
+    @property
+    def delimiter(self) -> Optional[str]:
+        try:
+            return self.preprocessor_datas[0]
+        except IndexError:
+            return None
+    
+    @property
+    def ending(self) -> Optional[str]:
+        try:
+            return self.preprocessor_datas[1]
+        except IndexError:
+            return None

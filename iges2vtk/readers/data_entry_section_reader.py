@@ -1,7 +1,22 @@
-from typing import List
+from typing import Callable, List
 from ..iges import Iges, ENTRY_LENGTH
-from ..entity import Entity
+from ..entity import *
 from .section_reader import SectionReader, IgesLine, chunk_string
+from collections import defaultdict
+
+etype2class: Dict[int, Callable] = {
+    100: CircularArc,
+    104: ConicArc,
+    110: Line,
+    116: Point,
+    124: Transformation,
+    126: RationalBSlipneCurve,
+    128: RationalBSplineSurface,
+    502: VertexList,
+    504: EdgeList,
+    508: Loop,
+    510: Face
+}
 
 
 class DataEntrySectionReader(SectionReader):
@@ -13,7 +28,8 @@ class DataEntrySectionReader(SectionReader):
 
     Example
     ------
-    >>> data_reader = DataEntrySectionReader(Iges())
+    >>> data_reader = DataEntrySectionReader()
+    >>> data_reader.iges = Iges()
     >>> line1 = IgesLine("     308      01               1       0               0        00020201","D","01")
     >>> line2 = IgesLine("     308       0               1                         SUBFIG1        ","D","02")
     >>> data_reader.read_line(line1)
@@ -33,8 +49,8 @@ class DataEntrySectionReader(SectionReader):
 
     FIELD_COUNT = 15
 
-    def __init__(self, iges: Iges) -> None:
-        super().__init__(iges)
+    def __init__(self) -> None:
+        super().__init__()
 
     def read_line(self, line: IgesLine):
         content = line.content
@@ -70,7 +86,12 @@ class DataEntrySectionReader(SectionReader):
 
             entity_param.append(param)
 
-        e = Entity(*entity_param)
+        try:
+            etype = etype2class[entity_param[0]]
+        except KeyError:
+            etype = Entity
+
+        e = etype(*entity_param)
         self.iges.entities.append(e)
         self.reset_unit_buffer()
 

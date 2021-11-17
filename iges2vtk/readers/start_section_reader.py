@@ -9,8 +9,8 @@ class StartSectionReader(SectionReader):
     Start section contains human readable description of the file.
     """
 
-    def __init__(self, iges: Iges):
-        super().__init__(iges)
+    def __init__(self):
+        super().__init__()
 
     def read_line(self, line: IgesLine):
         """
