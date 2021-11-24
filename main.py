@@ -1,7 +1,8 @@
 from iges2vtk.iges.readers.iges_reader import IgesReader
 
-filename = "cases/iges/PN_ICP System.igs"
+if __name__ == "__main__":
+    filename = "cases/iges/PN_ICP System.igs"
 
-reader = IgesReader()
+    reader = IgesReader()
 
-iges = reader.read_file(filename)
+    iges = reader.read_file(filename)
