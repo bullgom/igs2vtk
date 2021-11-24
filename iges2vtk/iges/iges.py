@@ -15,23 +15,27 @@ PreprocessorData = Union[str, int, float]
 # Every entry in iges are 8 in legth
 ENTRY_LENGTH = 8
 
+
 class Iges:
 
+    DEFAULT_DELIMITER = ","
+    DEFAULT_ENDING = ";"
+
     def __init__(self) -> None:
-        self.entities : List[Entity] = []
-        self.description : str = ""
-        self.preprocessor_datas : List[PreprocessorData] = []
+        self.entities: List[Entity] = []
+        self.description: str = ""
+        self.preprocessor_datas: List[PreprocessorData] = []
 
     @property
     def delimiter(self) -> Optional[str]:
-        try:
-            return self.preprocessor_datas[0]
-        except IndexError:
-            return None
-    
+        if (delimiter := self.preprocessor_datas[0:1][0]):
+            return delimiter
+        else:
+            return self.DEFAULT_DELIMITER
+
     @property
     def ending(self) -> Optional[str]:
-        try:
-            return self.preprocessor_datas[1]
-        except IndexError:
-            return None
+        if (ending := self.preprocessor_datas[1:2][0]):
+            return ending
+        else:
+            return self.DEFAULT_ENDING

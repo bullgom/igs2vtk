@@ -1,8 +1,6 @@
-from typing import List, Optional
-from ..iges import Iges, ENTRY_LENGTH
-from ..entity import Entity
+from typing import List, Optional, Union
 from .section_reader import SectionReader, IgesLine, read_hollerith
-
+import numba as nb
 
 class ParameterSectionReader(SectionReader):
     """
@@ -39,6 +37,7 @@ class ParameterSectionReader(SectionReader):
         self.pointer = int((seq_num - 1) / 2)
 
         parameters = content[:64].strip()
+        parameters = parameters[:-1] # last is always delimiter or ending
         self.unit_buffer += parameters.split(self.iges.delimiter)
 
     def process_unit(self):
@@ -46,19 +45,25 @@ class ParameterSectionReader(SectionReader):
 
         self.unit_buffer[-1] = self.unit_buffer[-1][:-1]  # remove ending
 
-        for entry in self.unit_buffer:
+        parameters = [self.convert(entry) for entry in self.unit_buffer]
 
-            i = entry.find("H")
-
-            if i == -1:  # a numerical value
-                param = float(entry) if entry else float()
-
-            else:  # a string value
-                param = read_hollerith(entry)
-
-            entity.add_parameters(param)
+        entity.add_parameters(*parameters)
 
         self.reset_unit_buffer()
+
+    @staticmethod
+    @nb.jit(nopython=True)
+    def convert(self, entry: str) -> Union[float, str]:
+        i = entry.find("H")
+
+        if i == -1:  # a numerical value
+            param = float(entry) if entry else float()
+
+        else:  # a string value
+            param = read_hollerith(entry)
+        
+        return param
+        
 
     def unit_ready(self) -> bool:
         try:

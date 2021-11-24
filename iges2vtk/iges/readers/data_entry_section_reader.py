@@ -81,8 +81,8 @@ class DataEntrySectionReader(SectionReader):
                 param = entry  # a string type
 
             else:
-                filled = entry.replace(' ', '0')
-                param = int(filled)
+                filled = entry.strip()
+                param = int(filled) if filled else 0
 
             entity_param.append(param)
 

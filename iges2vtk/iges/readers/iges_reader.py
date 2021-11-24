@@ -5,7 +5,8 @@ from .parameter_section_reader import ParameterSectionReader
 from .section_reader import IgesLine, Section, SectionReader
 from ..iges import Iges
 from typing import Dict, TextIO
-
+from tqdm import tqdm
+import mpipe as mp
 
 class IgesReader:
 
@@ -30,16 +31,19 @@ class IgesReader:
     def read_file(self, filename: str) -> Iges:
         iges = Iges()
         self.distribute_iges(iges)
+        
+        # setup pipeline
 
         with open(filename, 'r') as file:
-
+            pbar = tqdm()
             while (line := self.parse_line(file)).section != Section.Terminal.value:
                 reader = self.reader_map[line.section]
                 reader.read_line(line)
 
                 if reader.unit_ready():
                     reader.process_unit()
-
+                pbar.update()
+            pbar.close()
         return iges
 
     def parse_line(self, file: TextIO) -> IgesLine:
@@ -47,7 +51,7 @@ class IgesReader:
         line = file.readline()
         content = line[:72]
         section = line[72]
-        sequence_number = int(line[73:].replace(' ', '0'))
+        sequence_number = int(line[73:-1].replace(' ', '0'))
         iges_line = IgesLine(content, section, sequence_number)
         return iges_line
 

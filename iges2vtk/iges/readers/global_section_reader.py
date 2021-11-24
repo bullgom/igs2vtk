@@ -1,9 +1,12 @@
 from collections import namedtuple
-from typing import List
+from typing import List, Tuple
 from ..iges import Iges, PreprocessorData
 from .section_reader import SectionReader, IgesLine
+import numba as nb
 
-
+COMMA = ","
+H = "H"
+UNIT_ENDS = [COMMA, H]
 class GlobalSectionReader(SectionReader):
     """
     Reader for the 'Global' section.
@@ -33,43 +36,48 @@ class GlobalSectionReader(SectionReader):
 
     """
 
-    COMMA = ","
-    H = "H"
-
-    UNIT_ENDS = [COMMA, H]
 
     def __init__(self) -> None:
         super().__init__()
-        self.left_over: str = ""
+        self.reset_left_over()
 
     def read_line(self, line: IgesLine):
         # A unit ends in either ',' or 'H'
 
-        content = self.left_over + line.content
+        content = (self.left_over + line.content).strip()
+        if content[-1] == ";":
+            content = content.replace(";",",")
+        self.reset_left_over()
 
         i = 0
         while i < len(content):
-            try:
-                length = self.count_until_unit_end(content[i:])
-            except IndexError:
-                self.left_over = content[i:]
-                return
+            data_type, length = self.identify_data(content[i:])
 
-            if content[i+length] == self.COMMA:
-                # It's a numberical data
+            if data_type == COMMA:
+                # It's a numerical data
                 i = self.parse_numerical(i, length, content)
             else:
                 # It's a string data
                 i = self.parse_string(i, length, content)
             i += 1
 
-    def count_until_unit_end(self, remaining_line: str) -> int:
-        """Counts number of strings until ',' or 'H' is met"""
+    @staticmethod
+    @nb.jit(nopython=True)
+    def identify_data(remaining_line: str) -> Tuple[str, int]:
+        """
+        1. Identify type of next data
+            H: string
+            ,: int
+        2. Identify length of next data
+        By counting number of strings until ',' or 'H' is met
+        """
         length = 0
-        while remaining_line[length] not in self.UNIT_ENDS:
+        # UNIT_ENDS = [",", "H"] replaced for numba accel.
+        while remaining_line[length] not in [",", "H"]: 
             length += 1
-
-        return length
+        data_type = remaining_line[length]
+        
+        return data_type, length
 
     def parse_numerical(self, i: int, length: int, content: str) -> int:
         """Parse a numerical data and return the index to look at"""
@@ -84,11 +92,15 @@ class GlobalSectionReader(SectionReader):
         string_length = int(content[i: i+length])
         # length: length of the 'String length'
         # 1: length of 'H'
-        i += length + 1
-
-        data = str(content[i:i+string_length])
-        self.unit_buffer.append(data)
-        i += string_length
+        
+        data_end = i + length + string_length + 1
+        if data_end > len(content):
+            self.left_over = content[i:data_end]
+            i = len(content)
+        else:
+            i += length + 1
+            self.unit_buffer.append(str(content[i:data_end]))
+            i = data_end
         return i
 
     def process_unit(self):
@@ -101,6 +113,8 @@ class GlobalSectionReader(SectionReader):
     def reset_unit_buffer(self):
         self.unit_buffer: List[PreprocessorData] = []
 
+    def reset_left_over(self):
+        self.left_over : str = ""
 
 if __name__ == "__main__":
     import doctest

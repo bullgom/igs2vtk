@@ -4,6 +4,8 @@ from ..iges import Iges, PreprocessorData
 from abc import ABC, abstractmethod
 from enum import Enum
 from dataclasses import dataclass
+import numba as nb
+
 
 def read_hollerith(string: str) -> str:
     """
@@ -17,10 +19,10 @@ def read_hollerith(string: str) -> str:
     # +1 to skip the "H"
     return string[i+1:i+1+length]
 
+
 def chunk_string(string: str, length: int) -> List[str]:
     """Splits given string into chunks of given length"""
     return [string[y-length:y] for y in range(length, len(string)+length, length)]
-
 
 @dataclass
 class IgesLine:
@@ -67,7 +69,6 @@ class SectionReader(ABC):
     def reset_unit_buffer(self) -> None:
         """Rest unit buffer"""
         self.unit_buffer: str = ""
-
 
 
 if __name__ == "__main__":
