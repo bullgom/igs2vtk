@@ -9,6 +9,12 @@
             "type": "python",
             "request": "launch",
             "module": "main"
+        },
+        {
+            "name": "Conic",
+            "type": "python",
+            "request": "launch",
+            "module": "conic_test"
         }
     ]
 }

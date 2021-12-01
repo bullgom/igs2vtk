@@ -5,3 +5,7 @@
 *.STP
 *.pdf
 *.pyc
+*.vtk
+*.STEP
+
+./cases/*

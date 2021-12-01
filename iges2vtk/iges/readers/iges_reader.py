@@ -41,7 +41,7 @@ class IgesReader:
                 reader.read_line(line)
 
                 if reader.unit_ready():
-                    reader.process_unit()
+                    reader.process_unit(line.sequence)
                 pbar.update()
             pbar.close()
         return iges

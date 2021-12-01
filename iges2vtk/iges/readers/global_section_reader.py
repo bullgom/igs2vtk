@@ -2,7 +2,6 @@ from collections import namedtuple
 from typing import List, Tuple
 from ..iges import Iges, PreprocessorData
 from .section_reader import SectionReader, IgesLine
-import numba as nb
 
 COMMA = ","
 H = "H"
@@ -62,7 +61,6 @@ class GlobalSectionReader(SectionReader):
             i += 1
 
     @staticmethod
-    @nb.jit(nopython=True)
     def identify_data(remaining_line: str) -> Tuple[str, int]:
         """
         1. Identify type of next data
@@ -103,8 +101,8 @@ class GlobalSectionReader(SectionReader):
             i = data_end
         return i
 
-    def process_unit(self):
-        self.iges.preprocessor_datas += self.unit_buffer
+    def process_unit(self, sequence: int):
+        self.iges.global_data_list += self.unit_buffer
         self.reset_unit_buffer()
 
     def unit_ready(self) -> bool:

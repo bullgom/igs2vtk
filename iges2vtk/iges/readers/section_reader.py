@@ -4,7 +4,7 @@ from ..iges import Iges, PreprocessorData
 from abc import ABC, abstractmethod
 from enum import Enum
 from dataclasses import dataclass
-import numba as nb
+
 
 
 def read_hollerith(string: str) -> str:
@@ -56,7 +56,7 @@ class SectionReader(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def process_unit(self) -> None:
+    def process_unit(self, sequence: int) -> None:
         """When a unit is ready, process it."""
         raise NotImplementedError
 

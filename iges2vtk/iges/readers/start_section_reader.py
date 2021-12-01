@@ -24,7 +24,7 @@ class StartSectionReader(SectionReader):
         """
         self.unit_buffer += line.content
 
-    def process_unit(self):
+    def process_unit(self, sequence: int):
         """
         Appends the content of the line to iges's description
 

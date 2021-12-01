@@ -1,6 +1,7 @@
 from typing import List, Optional, Union
 from .section_reader import SectionReader, IgesLine, read_hollerith
-import numba as nb
+from ...common import Pointer
+
 
 class ParameterSectionReader(SectionReader):
     """
@@ -11,7 +12,7 @@ class ParameterSectionReader(SectionReader):
     >>> preader = ParameterSectionReader(Iges())
     >>> preader.iges.preprocessor_datas += [',', ';']
     >>> e = Entity(type_number=308, pd_pointer=1, structure=0, line_font_pattern=1, level=0, view=0, transformation_matrix_pointer=0, label_display_associativity=0, status_number=20201, line_weight=0, color=0, parameter_line_count=1, form=0, entity_label=' SUBFIG1', subscript=0, parameters=[])
-    >>> preader.iges.entities.append(e)
+    >>> preader.iges.add_entity(e)
     >>> preader.unit_ready()
     False
     >>> line = IgesLine("308,0,6HPADBLK,4,03,05,07,09;                                         01", "P", "01")
@@ -21,7 +22,7 @@ class ParameterSectionReader(SectionReader):
     >>> preader.unit_ready()
     True
     >>> preader.process_unit()
-    >>> preader.iges.entities[0].parameters
+    >>> preader.iges.entity_dict[0].parameters
     [308.0, 0.0, 'PADBLK', 4.0, 3.0, 5.0, 7.0, 9.0]
     """
 
@@ -33,27 +34,35 @@ class ParameterSectionReader(SectionReader):
 
         # -1 because the index in file starts at 1 while python index starts at 0
         # /2 because file index points to the sequence number which increases by 2 per entity
-        seq_num = int(content[64:72].replace(' ', '0'))
-        self.pointer = int((seq_num - 1) / 2)
+        pointer = Pointer(content[64:72].replace(' ', '0'))
+
+        if pointer != self.pointer:
+            self.pointer = pointer
+
+        self.line_count += 1
 
         parameters = content[:64].strip()
-        parameters = parameters[:-1] # last is always delimiter or ending
+        parameters = parameters[:-1]  # last is always delimiter or ending
         self.unit_buffer += parameters.split(self.iges.delimiter)
 
-    def process_unit(self):
-        entity = self.iges.entities[self.pointer]
+    def process_unit(self, sequence: int):
 
-        self.unit_buffer[-1] = self.unit_buffer[-1][:-1]  # remove ending
+        try:
 
-        parameters = [self.convert(entry) for entry in self.unit_buffer]
+            self.unit_buffer = self.unit_buffer[1:]  # remove entity type
 
-        entity.add_parameters(*parameters)
+            parameters = [self.convert(entry)
+                          for entry in self.unit_buffer if entry != ""]
+
+            entity = self.iges.entity_dict[self.pointer]
+            entity.add_parameters(*parameters)
+        except KeyError:
+            pass
 
         self.reset_unit_buffer()
 
     @staticmethod
-    @nb.jit(nopython=True)
-    def convert(self, entry: str) -> Union[float, str]:
+    def convert(entry: str) -> Union[float, str]:
         i = entry.find("H")
 
         if i == -1:  # a numerical value
@@ -61,19 +70,20 @@ class ParameterSectionReader(SectionReader):
 
         else:  # a string value
             param = read_hollerith(entry)
-        
+
         return param
-        
 
     def unit_ready(self) -> bool:
         try:
-            return self.iges.ending in self.unit_buffer[-1]
-        except IndexError:
-            return False
+            entity = self.iges.entity_dict[self.pointer]
+            return entity.parameter_line_count == self.line_count
+        except KeyError:
+            return True
 
     def reset_unit_buffer(self):
-        self.pointer: Optional[int] = None
+        self.pointer: Optional[Pointer] = None
         self.unit_buffer: List[str] = []
+        self.line_count: int = 0
 
 
 if __name__ == "__main__":

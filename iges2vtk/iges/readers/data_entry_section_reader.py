@@ -6,16 +6,20 @@ from collections import defaultdict
 
 etype2class: Dict[int, Callable] = {
     100: CircularArc,
+    102: CompositeCurve,
     104: ConicArc,
+    106: CopiousData,
     110: Line,
     116: Point,
+    120: SurfaceOfRevolution,
     124: Transformation,
-    126: RationalBSlipneCurve,
+    126: RationalBSplineCurve,
     128: RationalBSplineSurface,
+    308: SubfigureDefinition,
     502: VertexList,
     504: EdgeList,
     508: Loop,
-    510: Face
+    510: Face,
 }
 
 
@@ -43,7 +47,7 @@ class DataEntrySectionReader(SectionReader):
     >>> data_reader.process_unit()
     >>> data_reader.unit_buffer
     []
-    >>> data_reader.iges.entities
+    >>> data_reader.iges.entities.values()
     [Entity(type_number=308, pd_pointer=1, structure=0, line_font_pattern=1, level=0, view=0, transformation_matrix_pointer=0, label_display_associativity=0, status_number=20201, line_weight=0, color=0, parameter_line_count=1, form=0, entity_label=' SUBFIG1', subscript=0, parameters=[])]
     """
 
@@ -58,7 +62,7 @@ class DataEntrySectionReader(SectionReader):
 
         self.unit_buffer += chunks
 
-    def process_unit(self):
+    def process_unit(self, sequence: int):
         """
         Creates entity and appends to iges.
         Examples and the document does not match. It is assumed that
@@ -88,11 +92,11 @@ class DataEntrySectionReader(SectionReader):
 
         try:
             etype = etype2class[entity_param[0]]
+            e = etype(*entity_param)
+            self.iges.add_entity(e, sequence - 1)
         except KeyError:
-            etype = Entity
+            pass
 
-        e = etype(*entity_param)
-        self.iges.entities.append(e)
         self.reset_unit_buffer()
 
     def reset_unit_buffer(self):
