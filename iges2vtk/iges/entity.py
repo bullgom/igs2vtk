@@ -1,9 +1,11 @@
 from typing import ClassVar, Dict, List, Optional, Sequence, Union, Tuple, Any, Type
 from dataclasses import dataclass, field
 import numpy as np
+from pygmsh.common import bspline
 from ..common import Pointer
 from pygmsh.geo import Geometry
 from math import ceil, floor, sqrt
+from geomdl import BSpline
 import gmsh  # To do some low level creation
 
 """
@@ -44,8 +46,8 @@ class Entity:
     # instead of just [], below is required
     # because mutable default is not allowed
     parameters: List[Parameter] = field(default_factory=list)
-    
-    _geometry: Optional[Any] = None    
+
+    _geometry: Optional[Any] = None
     _render: ClassVar[bool] = True
 
     @staticmethod
@@ -236,50 +238,30 @@ class ConicArc(Entity):  # 124
 
         start = np.array([self.x1, self.y1, self.z1])
         end = np.array([self.x2, self.y2, self.z2])
+        center = np.array([0, 0, 0])
 
-        pos: List[np.ndarray] = []
-        neg: List[np.ndarray] = []
-        x_range = self.get_x_range(start, end, lcar)
-        for x in x_range:
-            try:
-                y_pos = self.get_y_positive(
-                    self.a, self.b, self.c, self.d, self.e, self.f, x)
-                pos.append((x, y_pos, self.z1))
-            except ValueError:
-                pass
-
-            try:
-                y_neg = self.get_y_negative(
-                    self.a, self.b, self.c, self.d, self.e, self.f, x)
-                neg.append((x, y_neg, self.z1))
-            except ValueError:
-                pass
-
-        points = pos + neg[::-1]
+        a = self.get_major_raidus(
+            self.a, self.b, self.c, self.d, self.e, self.f)
+        point_on_major = np.array([a, 0, 0])
 
         if self.transformation_pointer:
-            transfomation = entities[self.transformation_pointer]
+            t = entities[self.transformation_pointer]
 
-            transformed = []
-            for point in points:
-                point = np.array(point)
-                new_point = transfomation.transform(point)
-                transformed.append(new_point[0])
+            start = t.transform(start)[0]
+            end = t.transform(end)[0]
+            center = t.transform(center)[0]
+            point_on_major = t.transform(point_on_major)[0]
 
-            points = transformed
+        start = geometry.add_point(start, lcar)
+        end = geometry.add_point(end, lcar)
+        center = geometry.add_point(center, lcar)
+        point_on_major = geometry.add_point(point_on_major, lcar)
 
-        last_point = geometry.add_point(points[0])
-        first = last_point
-        for point in points[1:]:
-            point = geometry.add_point(point)
-            line = geometry.add_line(last_point, point)
-            last_point = point
-        
-        geometry.add_line(last_point, first)
+        geometry.add_ellipse_arc(start, center, point_on_major, end)
 
     @staticmethod
     def get_x_range(start_pos: np.ndarray, end_pos: np.ndarray, step: float) -> np.ndarray:
-        
+
         pos = np.arange(start=start_pos[0], stop=end_pos[0]+step, step=step)
         neg = np.array([x * -1 for x in np.flip(pos)])
         return np.hstack((neg, pos))
@@ -343,9 +325,8 @@ class Transformation(Entity):  # 124
         self.t = np.array([[t1, t2, t3]])
 
     def transform(self, coordinate: np.array) -> np.array:
-        
+
         return self.r.dot(coordinate) + self.t
-        
 
     def to_vtk(self, entities: Dict[Pointer, "Entity"], geometry: Geometry, lcar: float = 0.1):
         if not self._render:
@@ -389,36 +370,42 @@ class RationalBSplineCurve(Entity):
     """
 
     def add_parameters(self, *args: List[Parameter]):
-        self.K, self.M, self.flag1, self.flag2, self.flag3, self.flag4 \
+        self.K, self.degree, self.flag1, self.flag2, self.flag3, self.flag4 \
             = map(lambda x: int(x), args[:6])
 
-        weight_start_idx = 8 + self.K + self.M
+        weight_start_idx = 8 + self.K + self.degree
         control_start_idx = weight_start_idx + self.K + 1
         etc_start_idx = control_start_idx + 3 * self.K + 3
         knot_range = range(6, weight_start_idx)
         weight_range = range(weight_start_idx, control_start_idx)
-        control_range = range(control_start_idx, etc_start_idx)
 
         self.v0, self.v1, self.xn, self.yn, self.zn = args[etc_start_idx:]
 
         self.knots = [args[i] for i in knot_range]
         self.weights = [args[i] for i in weight_range]
-        self.control_points = [args[i] for i in control_range]
+        temp_control_points = args[control_start_idx:etc_start_idx]
+        self.control_points = [temp_control_points[i:i + 3] for i in range(0, len(temp_control_points), 3)]
 
     def to_vtk(self, entities: Dict[Pointer, "Entity"], geometry: Geometry, lcar: float = 0.1):
         if not self._render:
             return
 
+        curve = BSpline.Curve()
+        curve.degree = self.degree
+        curve.ctrlpts = self.control_points
+        curve.knotvector = self.knots
+        curve.delta = lcar
+
+        _points = curve.evalpts
+
         points = []
-        for i in range(int(len(self.control_points)/3)):
-            point = np.array(self.control_points[i*3: (i+1)*3])
-            
+        for point in _points:
+
             if self.transformation_pointer:
                 transfomation = entities[self.transformation_pointer]
-                
-                point = transfomation.transform(point)
-                point = point[0]
-            
+
+                point = transfomation.transform(point)[0]
+
             point = geometry.add_point(point, lcar)
             points.append(point)
 
@@ -612,7 +599,7 @@ class VertexList(Entity):
 
 
 @dataclass
-class SurfaceOfRevolution(Entity): # 120
+class SurfaceOfRevolution(Entity):  # 120
 
     def add_parameters(self, *args: List[Parameter]):
         self.axis_line = Pointer(args[0])
@@ -628,17 +615,17 @@ class SurfaceOfRevolution(Entity): # 120
             # this entity is dependent on another entity,
             # if the other entity is not rendered, this will not work
             # so enable it for this
-            old_render= target._render
+            old_render = target._render
             target._render = True
             target.to_vtk(entities, geometry, lcar)
             target._render = old_render
         target_geometry = target._geometry
-            
+
         geometry.revolve(target_geometry, line.start, line.end, 3.14)
-        
+
 
 @dataclass
-class CompositeCurve(Entity): # 102
+class CompositeCurve(Entity):  # 102
 
     def add_parameters(self, *args: List[Parameter]):
         curve_count = int(args[0])
@@ -647,7 +634,7 @@ class CompositeCurve(Entity): # 102
     def to_vtk(self, entities: Dict[Pointer, "Entity"], geometry: Geometry, lcar: float = 0.1):
         if not self._render:
             return
-    
+
 
 # todo
 # Surface Revolution Type 120
