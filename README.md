@@ -18,3 +18,5 @@ This project was created for assignment of
 
 at Korea Aerospace University
 
+I will be happy to have suggestions, questions, or contributions to make this
+project more complete.
