@@ -14,7 +14,8 @@ Currently there are many issues.
 This project was created for assignment of 
 
 - `반도체공정시뮬레이션(2021) - 최희환 교수님`
-- `Semi Conductor Processing Simulation(2021) - Prof. Hee-hwan Choi`
+Or
+- `SemiConductor Processing Simulation(2021) - Prof. Hee-hwan Choi`
 
 at Korea Aerospace University
 
