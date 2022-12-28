@@ -15,6 +15,8 @@ etype2class: Dict[int, Callable] = {
     124: Transformation,
     126: RationalBSplineCurve,
     128: RationalBSplineSurface,
+    142: CurveOnParametricSurface,
+    144: TrimmedSurface,
     308: SubfigureDefinition,
     502: VertexList,
     504: EdgeList,

@@ -7,9 +7,9 @@ if __name__ == "__main__":
     start_time = datetime.now()
 
     Line._render = False
-    #Point._render = False
+    Point._render = False
     #RationalBSplineSurface._render = False
-    #RationalBSplineCurve._render = False
+    RationalBSplineCurve._render = False
     #ConicArc._render = False
     #CircularArc._render = False
     CopiousData._render = False
@@ -27,7 +27,7 @@ if __name__ == "__main__":
     print(f"Reading file: {source}")
     iges = reader.read_file(source)
     print(f"Converting")
-    vtk = converter.convert(iges, 0.1, 0.1, 1)
+    vtk = converter.convert(iges, 0.1, 0.1, 2)
 
     print(f"Writing file: {save_name}")
     vtk.write(save_name, file_format="vtk", binary=False)

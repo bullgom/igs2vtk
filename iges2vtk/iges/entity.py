@@ -1,12 +1,11 @@
-from typing import ClassVar, Dict, List, Optional, Sequence, Union, Tuple, Any, Type
+from typing import ClassVar, Dict, List, Optional, Union, Tuple, Any
 from dataclasses import dataclass, field
 import numpy as np
-from pygmsh.common import bspline
 from ..common import Pointer
 from pygmsh.geo import Geometry
-from math import ceil, floor, sqrt
+from math import ceil, floor, sqrt, pi
 from geomdl import BSpline
-import gmsh  # To do some low level creation
+
 
 """
 NM: Abbreviation for 'not mine'. Used to denote codes that are took from pyiges
@@ -14,9 +13,9 @@ NM: Abbreviation for 'not mine'. Used to denote codes that are took from pyiges
 
 """
 Omitted entity type list
-202: Angular Dimension Entity, 
-210: General Label Entity, 212: General Note Entity, 214: Leader Arrow Entity, 
-216: Linear Dimension Entity, 218: Ordimate Dimension Entity, 
+202: Angular Dimension Entity,
+210: General Label Entity, 212: General Note Entity, 214: Leader Arrow Entity,
+216: Linear Dimension Entity, 218: Ordimate Dimension Entity,
 """
 
 Parameter = Union[str, float]
@@ -213,9 +212,9 @@ class ConicArc(Entity):  # 124
 
     The definitions of the terms ellipse, parabola, and hyperbola are given in terms of the quantities Q1,Q2, andQ3. These quantities are:
 
-            |  A   B/2  D/2 |        |  A   B/2 | 
-        Q1= | B/2   C   E/2 |   Q2 = | B/2   C  |   Q3 = A + C 
-            | D/2  E/2   F  | 
+            |  A   B/2  D/2 |        |  A   B/2 |
+        Q1= | B/2   C   E/2 |   Q2 = | B/2   C  |   Q3 = A + C
+            | D/2  E/2   F  |
     A parent conic curve is:
 
     An ellipse if Q2 > 0 and Q1Q3 < 0.
@@ -223,7 +222,7 @@ class ConicArc(Entity):  # 124
     A parabola if Q2 = 0 and Q1 != 0.
 
     +@ from https://en.wikipedia.org/wiki/Matrix_representation_of_conic_sections
-    center: 
+    center:
     |xc| = | (BE - 2CD)/(4AC - B^2) |
     |yc| = | (DB - 2AE)/(4AC - B^2) |
     """
@@ -269,10 +268,10 @@ class ConicArc(Entity):  # 124
     @staticmethod
     def get_major_raidus(a, b, c, d, e, f) -> np.float:
         """
-        For an ellipse or hyperbola, you can find the canonical form 
-        from the general form. 
+        For an ellipse or hyperbola, you can find the canonical form
+        from the general form.
         We only need `a`, the major radius so `b` is not calculated
-        Reference: https://en.wikipedia.org/wiki/Conic_section#Matrix_notation 
+        Reference: https://en.wikipedia.org/wiki/Conic_section#Matrix_notation
         """
         sol = np.array([[a, b/2], [b/2, c]])
         conic_matrix = np.array([[a, b/2, d/2], [b/2, c, e/2], [d/2, e/2, f]])
@@ -384,22 +383,15 @@ class RationalBSplineCurve(Entity):
         self.knots = [args[i] for i in knot_range]
         self.weights = [args[i] for i in weight_range]
         temp_control_points = args[control_start_idx:etc_start_idx]
-        self.control_points = [temp_control_points[i:i + 3] for i in range(0, len(temp_control_points), 3)]
+        self.control_points = [temp_control_points[i:i + 3]
+                               for i in range(0, len(temp_control_points), 3)]
 
     def to_vtk(self, entities: Dict[Pointer, "Entity"], geometry: Geometry, lcar: float = 0.1):
         if not self._render:
             return
 
-        curve = BSpline.Curve()
-        curve.degree = self.degree
-        curve.ctrlpts = self.control_points
-        curve.knotvector = self.knots
-        curve.delta = lcar
-
-        _points = curve.evalpts
-
         points = []
-        for point in _points:
+        for point in self.control_points:
 
             if self.transformation_pointer:
                 transfomation = entities[self.transformation_pointer]
@@ -619,9 +611,43 @@ class SurfaceOfRevolution(Entity):  # 120
             target._render = True
             target.to_vtk(entities, geometry, lcar)
             target._render = old_render
-        target_geometry = target._geometry
 
-        geometry.revolve(target_geometry, line.start, line.end, 3.14)
+        """
+        pygmsh only supports revolutions with angles smaller than pi.
+        Borrowing method from
+        https://github.com/nschloe/pygmsh/blob/975f82ad5e08d08567f172fcc90352694cafe557/src/pygmsh/geo/geometry.py#L50
+        _add_pipe_by_rectangle_rotation
+        divide the full rotation into smaller rotations
+        """
+        degrees = self.end_angle - self.start_angle
+        iterations = ceil(degrees/pi)
+        degree_per_iter = degrees/iterations
+        start = [*line.start]
+        end = [*line.end]
+        previous = target._geometry
+        to_be_removed = [previous, line._geometry, target._geometry]
+        surfaces = []
+
+        assert degree_per_iter * iterations <= degrees
+
+        try:
+            for i in range(iterations+1):
+                top, surf, _ = geometry.revolve(
+                    previous, start, end, degree_per_iter)
+                previous = top
+                to_be_removed.append(previous)
+
+                surfaces.append(surf)
+            geometry.add_surface_loop(surfaces)
+        except IndexError:
+            pass
+
+        self.remove_used(to_be_removed, geometry)
+
+    def remove_used(self, used: List, geometry: Geometry):
+        for x in used:
+            if x:
+                geometry.remove(x)
 
 
 @dataclass
@@ -636,8 +662,51 @@ class CompositeCurve(Entity):  # 102
             return
 
 
-# todo
-# Surface Revolution Type 120
-# Composite Curve 102
-# Trimmed Surface 144
-# Curve on Parametric Surface 142
+@dataclass
+class CurveOnParametricSurface(Entity):
+
+    def add_parameters(self, *args: List[Parameter]):
+        # How curve was created
+        # 0: Unspecified 1: Projection 2: Intersection of surfaces
+        # 3: Isoparametric curve
+        self.flag = int(args[0])
+        self.surface = Pointer(args[1])
+        self.curve = Pointer(args[2])
+        # Entity that provides mapping from curve to surface
+        self.mappig = Pointer(args[3])
+        self.representation = int(args[4])
+
+    def to_vtk(self, entities: Dict[Pointer, "Entity"], geometry: Geometry, lcar: float = 0.1):
+
+        pass
+
+
+@dataclass
+class TrimmedSurface(Entity):
+    """
+    Represents a trimmed surface.
+    The surface is created by the actual surface entity.
+    TrimmedSurface acts as an operator that trims it.
+    """
+
+    def add_parameters(self, *args: List[Parameter]):
+        self.surface = Pointer(args[0])
+        # 0: Boundary is boudary of surface 1: otherwise
+        self.is_outer_boundary = bool(args[1])
+        # args[2] is inner curve count
+        self.outer_bound = Pointer(args[3])
+        self.inners = list(map(Pointer, args[4:]))
+
+    def to_vtk(self, entities: Dict[Pointer, "Entity"], geometry: Geometry, lcar: float = 0.1):
+        if not self._render:
+            return
+
+        if self.is_outer_boundary:
+            self.to_vtk_outer(entities, geometry, lcar)
+        else:
+            raise NotImplementedError
+
+    def to_vtk_outer(self, entities: Dict[Pointer, "Entity"], geometry: Geometry, lcar: float = 0.1):
+        curve = entities[self.outer_bound]
+        surf = entities[self.surface]
+        
